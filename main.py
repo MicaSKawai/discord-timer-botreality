@@ -75,7 +75,7 @@ def tiempo_restante(seg):
     else:
         return f"{minutos}m"
 
-# ---------------- TIMER CREATOR ----------------
+# ---------------- CREAR TIMER ----------------
 
 async def iniciar_timer(ctx, tipo, horas):
 
@@ -83,7 +83,7 @@ async def iniciar_timer(ctx, tipo, horas):
         return
 
     inicio = ahora()
-    fin = inicio + horas * 3600
+    fin = inicio + int(horas * 3600)
 
     cursor.execute(
         "INSERT INTO timers VALUES (?,?,?,?,?)",
@@ -123,7 +123,13 @@ async def robo(ctx):
 async def cargas(ctx):
     await iniciar_timer(ctx, "Cargas", 72)
 
-# ---------------- VER TIMERS ----------------
+# TIMER DE PRUEBA (1 MINUTO)
+
+@bot.command()
+async def test(ctx):
+    await iniciar_timer(ctx, "Test", 0.0167)
+
+# ---------------- VER TODOS LOS TIMERS ----------------
 
 @bot.command()
 async def timers(ctx):
@@ -216,6 +222,9 @@ async def revisar():
 
         elif tipo == "Cargas":
             msg = f"{user.mention} VE A COMPRAR CARGADORES CON TODOS TUS PJs Farmero de corazón!!"
+
+        elif tipo == "Test":
+            msg = f"{user.mention} ⏰ Timer de prueba finalizado!"
 
         else:
             msg = f"{user.mention} Timer terminado!"
