@@ -30,14 +30,15 @@ TOKEN = os.environ["DISCORD_TOKEN"]
 
 # ---------------- CANALES ----------------
 
-CANAL_AVISOS = 1481166318026752133
 CANAL_REGISTRO = 1481166533748326421
+CANAL_AVISOS = 1481166318026752133
 CANAL_DASHBOARD = 1481397540883792068
 
 # ---------------- DISCORD ----------------
 
 intents = discord.Intents.default()
 intents.message_content = True
+
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ---------------- DATABASE ----------------
@@ -51,7 +52,8 @@ user_id INTEGER,
 username TEXT,
 tipo TEXT,
 inicio INTEGER,
-fin INTEGER
+fin INTEGER,
+mensaje INTEGER
 )
 """)
 
@@ -64,11 +66,17 @@ cantidad INTEGER
 )
 """)
 
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS dashboard(
+msg_id INTEGER
+)
+""")
+
 db.commit()
 
 # ---------------- TIEMPO ----------------
 
-def ahora():
+def now():
     return int(time.time())
 
 def hora_arg(ts):
@@ -92,31 +100,32 @@ def tiempo_restante(seg):
     else:
         return f"{minutos}m"
 
-# ---------------- BARRA PROGRESO ----------------
+# ---------------- BARRA ----------------
 
-def barra_progreso(inicio, fin):
+def barra(inicio, fin):
 
     total = fin - inicio
-    pasado = ahora() - inicio
+    progreso = now() - inicio
 
-    if pasado < 0:
-        pasado = 0
+    if progreso < 0:
+        progreso = 0
 
-    if pasado > total:
-        pasado = total
+    if progreso > total:
+        progreso = total
 
-    progreso = pasado / total
+    porcentaje = progreso / total
 
-    bloques = 16
-    llenos = int(bloques * progreso)
+    bloques = 14
+    llenos = int(bloques * porcentaje)
     vacios = bloques - llenos
 
-    barra = "█"*llenos + "░"*vacios
-    porcentaje = int(progreso*100)
+    bar = "▰"*llenos + "▱"*vacios
 
-    return f"{barra} {porcentaje}%"
+    restante = fin - now()
 
-# ---------------- SUMAR RANKING ----------------
+    return f"{bar} {int(porcentaje*100)}%\n⚡ Restante: {tiempo_restante(restante)}"
+
+# ---------------- RANKING ----------------
 
 def sumar_ranking(user_id, username, tipo):
 
@@ -125,9 +134,9 @@ def sumar_ranking(user_id, username, tipo):
     (user_id,tipo)
     )
 
-    dato = cursor.fetchone()
+    data = cursor.fetchone()
 
-    if dato:
+    if data:
 
         cursor.execute(
         "UPDATE ranking SET cantidad=cantidad+1 WHERE user_id=? AND tipo=?",
@@ -145,42 +154,46 @@ def sumar_ranking(user_id, username, tipo):
 
 # ---------------- TIMER ----------------
 
-async def iniciar_timer(ctx,tipo,horas):
-
-    if ctx.channel.id != CANAL_REGISTRO:
-        return
-
-    inicio = ahora()
-    fin = inicio + int(horas*3600)
+async def iniciar_timer(ctx, tipo, horas):
 
     cursor.execute(
-    "INSERT INTO timers VALUES (?,?,?,?,?)",
-    (ctx.author.id,ctx.author.name,tipo,inicio,fin)
+    "SELECT * FROM timers WHERE user_id=? AND tipo=?",
+    (ctx.author.id, tipo)
     )
 
-    db.commit()
+    if cursor.fetchone():
+        await ctx.send(f"⚠️ {ctx.author.mention} ya tienes un **{tipo}** activo.")
+        return
 
-    sumar_ranking(ctx.author.id,ctx.author.name,tipo)
+    inicio = now()
+    fin = inicio + int(horas*3600)
 
     embed = discord.Embed(
-    title="⏱ Timer iniciado",
+    title=f"⏱ Timer de {tipo}",
     color=0x00ffaa
     )
 
-    embed.add_field(name="Usuario",value=ctx.author.mention,inline=False)
-
-    embed.add_field(name="Acción",value=tipo,inline=True)
+    embed.add_field(name="Usuario", value=ctx.author.mention, inline=False)
 
     embed.add_field(
     name="Progreso",
-    value=barra_progreso(inicio,fin),
+    value=barra(inicio,fin),
     inline=False
     )
 
     embed.add_field(name="Fin ARG",value=hora_arg(fin))
     embed.add_field(name="Fin HUB",value=hora_hub(fin))
 
-    await ctx.send(embed=embed)
+    msg = await ctx.send(embed=embed)
+
+    cursor.execute(
+    "INSERT INTO timers VALUES (?,?,?,?,?,?)",
+    (ctx.author.id,ctx.author.name,tipo,inicio,fin,msg.id)
+    )
+
+    db.commit()
+
+    sumar_ranking(ctx.author.id,ctx.author.name,tipo)
 
 # ---------------- COMANDOS ----------------
 
@@ -202,9 +215,9 @@ async def cargas(ctx):
 
 @bot.command()
 async def test(ctx):
-    await iniciar_timer(ctx,"Test",0.0167)
+    await iniciar_timer(ctx,"Test",0.02)
 
-# ---------------- PANEL BOTONES ----------------
+# ---------------- PANEL ----------------
 
 class Panel(discord.ui.View):
 
@@ -243,114 +256,103 @@ class Panel(discord.ui.View):
 @bot.command()
 async def panel(ctx):
 
-    if ctx.channel.id != CANAL_REGISTRO:
-        return
-
     embed = discord.Embed(
-    title="🎮 Panel de Timers",
-    description="Usa los botones para iniciar timers.",
-    color=0x5865F2
+        title="🎮 Panel de Timers",
+        description="Usa los botones para iniciar timers.",
+        color=0x5865F2
     )
 
     await ctx.send(embed=embed,view=Panel())
 
 # ---------------- DASHBOARD ----------------
 
-dashboard_message=None
+dashboard_msg = None
 
-@bot.command()
-async def dashboard(ctx):
+@tasks.loop(seconds=10)
+async def dashboard():
 
-    global dashboard_message
+    global dashboard_msg
 
-    if ctx.channel.id != CANAL_DASHBOARD:
-        return
+    canal = bot.get_channel(CANAL_DASHBOARD)
 
-    embed=discord.Embed(
-    title="📊 Timers activos",
-    description="Panel automático",
-    color=0x2ecc71
-    )
+    cursor.execute("SELECT msg_id FROM dashboard")
+    data = cursor.fetchone()
 
-    dashboard_message=await ctx.send(embed=embed)
-
-@tasks.loop(seconds=5)
-async def actualizar_dashboard():
-
-    global dashboard_message
-
-    if dashboard_message is None:
-        return
+    if data:
+        try:
+            dashboard_msg = await canal.fetch_message(data[0])
+        except:
+            dashboard_msg = None
 
     cursor.execute("SELECT * FROM timers")
-    datos=cursor.fetchall()
+    timers = cursor.fetchall()
 
-    embed=discord.Embed(
-    title="📊 Timers activos del servidor",
-    color=0x2ecc71
-    )
+    texto = ""
 
-    if not datos:
-        embed.add_field(
-        name="Sin timers",
-        value="Nadie tiene timers activos",
-        inline=False
-        )
+    for t in timers:
 
-    for t in datos:
+        restante = t[4] - now()
 
-        restante=t[4]-ahora()
-
-        if restante<=0:
+        if restante <= 0:
             continue
 
-        barra=barra_progreso(t[3],t[4])
+        texto += f"👤 <@{t[0]}>\n"
+        texto += f"🎯 {t[2]}\n"
+        texto += f"{barra(t[3],t[4])}\n"
+        texto += f"Fin ARG: {hora_arg(t[4])}\n"
+        texto += f"Fin HUB: {hora_hub(t[4])}\n\n"
 
-        embed.add_field(
-        name=f"{t[2]} • {t[1]}",
-        value=f"{barra}\n⏳ {tiempo_restante(restante)}",
-        inline=False
-        )
+    if texto == "":
+        texto = "No hay timers activos."
 
-    try:
-        await dashboard_message.edit(embed=embed)
-    except:
-        pass
+    embed = discord.Embed(
+        title="📊 Dashboard Farm Server",
+        description=texto,
+        color=0x2ecc71
+    )
 
-# ---------------- FINALIZAR TIMERS ----------------
+    if dashboard_msg is None:
 
-@tasks.loop(seconds=5)
-async def revisar():
+        dashboard_msg = await canal.send(embed=embed)
 
-    cursor.execute("SELECT * FROM timers WHERE fin <= ?",(ahora(),))
-    lista=cursor.fetchall()
+        cursor.execute("DELETE FROM dashboard")
+        cursor.execute("INSERT INTO dashboard VALUES (?)",(dashboard_msg.id,))
+        db.commit()
 
-    if not lista:
-        return
+    else:
 
-    canal=bot.get_channel(CANAL_AVISOS)
+        await dashboard_msg.edit(embed=embed)
+
+# ---------------- FINALIZAR ----------------
+
+@tasks.loop(seconds=10)
+async def finalizar():
+
+    cursor.execute("SELECT * FROM timers WHERE fin <= ?",(now(),))
+    lista = cursor.fetchall()
+
+    canal = bot.get_channel(CANAL_AVISOS)
 
     for t in lista:
 
-        user=await bot.fetch_user(t[0])
-        tipo=t[2]
+        user = await bot.fetch_user(t[0])
 
-        embed=discord.Embed(
-        title="✅ Timer finalizado",
-        description=f"{user.mention} tu **{tipo}** ya terminó",
-        color=0x00ff00
+        embed = discord.Embed(
+            title="✅ Timer terminado",
+            description=f"{user.mention} terminó **{t[2]}**",
+            color=0x00ff00
         )
 
         await canal.send(embed=embed)
 
         cursor.execute(
-        "DELETE FROM timers WHERE user_id=? AND tipo=? AND inicio=? AND fin=?",
-        (t[0],t[2],t[3],t[4])
+            "DELETE FROM timers WHERE mensaje=?",
+            (t[5],)
         )
 
         db.commit()
 
-# ---------------- STATS USUARIO ----------------
+# ---------------- STATS ----------------
 
 @bot.command()
 async def stats(ctx):
@@ -360,24 +362,49 @@ async def stats(ctx):
     (ctx.author.id,)
     )
 
-    datos=cursor.fetchall()
+    datos = cursor.fetchall()
 
-    if not datos:
-        await ctx.send("No tienes actividad registrada.")
-        return
-
-    embed=discord.Embed(
+    embed = discord.Embed(
     title=f"📊 Estadísticas de {ctx.author.name}",
     color=0x3498db
     )
 
     for tipo,cant in datos:
+        embed.add_field(name=tipo,value=f"{cant}",inline=False)
 
-        embed.add_field(
-        name=tipo,
-        value=f"{cant} completados",
-        inline=False
+    await ctx.send(embed=embed)
+
+# ---------------- RANKING ----------------
+
+@bot.command()
+async def farmeritos(ctx):
+
+    embed = discord.Embed(
+        title="🏆 Farmeritos Vividos",
+        color=0xf1c40f
+    )
+
+    for tipo in ["Cajas","Robo","Capataz","Cargas"]:
+
+        cursor.execute(
+        "SELECT username,cantidad FROM ranking WHERE tipo=? ORDER BY cantidad DESC LIMIT 5",
+        (tipo,)
         )
+
+        top = cursor.fetchall()
+
+        texto = ""
+
+        medals = ["🥇","🥈","🥉","4️⃣","5️⃣"]
+
+        for i,(user,cant) in enumerate(top):
+
+            texto += f"{medals[i]} {user} — {cant}\n"
+
+        if texto == "":
+            texto = "Sin datos"
+
+        embed.add_field(name=tipo,value=texto,inline=False)
 
     await ctx.send(embed=embed)
 
@@ -385,8 +412,10 @@ async def stats(ctx):
 
 @bot.event
 async def on_ready():
+
     print("Bot conectado como",bot.user)
-    revisar.start()
-    actualizar_dashboard.start()
+
+    dashboard.start()
+    finalizar.start()
 
 bot.run(TOKEN)
