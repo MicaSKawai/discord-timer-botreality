@@ -38,7 +38,6 @@ CANAL_DASHBOARD = 1481397540883792068
 
 intents = discord.Intents.default()
 intents.message_content = True
-
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ---------------- DATABASE ----------------
@@ -63,11 +62,16 @@ db.commit()
 def ahora():
     return int(time.time())
 
-def hora_local(ts):
-    return datetime.fromtimestamp(ts).strftime("%H:%M")
+def hora_argentina(ts):
+    utc = datetime.utcfromtimestamp(ts)
+    argentina = utc - timedelta(hours=3)
+    return argentina.strftime("%H:%M")
 
 def hora_hub(ts):
-    return (datetime.fromtimestamp(ts) + timedelta(hours=3)).strftime("%H:%M")
+    utc = datetime.utcfromtimestamp(ts)
+    argentina = utc - timedelta(hours=3)
+    hub = argentina + timedelta(hours=3)
+    return hub.strftime("%H:%M")
 
 def tiempo_restante(seg):
 
@@ -110,10 +114,10 @@ async def iniciar_timer(ctx, tipo, horas):
     embed.add_field(name="Acción", value=tipo, inline=True)
     embed.add_field(name="Duración", value=duracion, inline=True)
 
-    embed.add_field(name="Inicio Local", value=hora_local(inicio))
+    embed.add_field(name="Inicio ARG", value=hora_argentina(inicio))
     embed.add_field(name="Inicio HUB", value=hora_hub(inicio))
 
-    embed.add_field(name="Fin Local", value=hora_local(fin))
+    embed.add_field(name="Fin ARG", value=hora_argentina(fin))
     embed.add_field(name="Fin HUB", value=hora_hub(fin))
 
     await ctx.send(embed=embed)
@@ -140,12 +144,12 @@ async def cargas(ctx):
 async def test(ctx):
     await iniciar_timer(ctx,"Test",0.0167)
 
-# ---------------- PANEL ----------------
+# ---------------- PANEL BOTONES ----------------
 
 class Panel(discord.ui.View):
 
-    @discord.ui.button(label="📦 Cajas",style=discord.ButtonStyle.primary)
-    async def cajas(self,interaction:discord.Interaction,button:discord.ui.Button):
+    @discord.ui.button(label="📦 Cajas", style=discord.ButtonStyle.primary)
+    async def cajas(self, interaction:discord.Interaction, button:discord.ui.Button):
 
         inicio = ahora()
         fin = inicio + 3*3600
@@ -156,8 +160,8 @@ class Panel(discord.ui.View):
 
         await interaction.response.send_message("📦 Timer de cajas iniciado",ephemeral=True)
 
-    @discord.ui.button(label="💰 Robo",style=discord.ButtonStyle.danger)
-    async def robo(self,interaction:discord.Interaction,button:discord.ui.Button):
+    @discord.ui.button(label="💰 Robo", style=discord.ButtonStyle.danger)
+    async def robo(self, interaction:discord.Interaction, button:discord.ui.Button):
 
         inicio = ahora()
         fin = inicio + 2*3600
@@ -168,8 +172,8 @@ class Panel(discord.ui.View):
 
         await interaction.response.send_message("💰 Timer de robo iniciado",ephemeral=True)
 
-    @discord.ui.button(label="👷 Capataz",style=discord.ButtonStyle.success)
-    async def capataz(self,interaction:discord.Interaction,button:discord.ui.Button):
+    @discord.ui.button(label="👷 Capataz", style=discord.ButtonStyle.success)
+    async def capataz(self, interaction:discord.Interaction, button:discord.ui.Button):
 
         inicio = ahora()
         fin = inicio + 5*3600
@@ -180,8 +184,8 @@ class Panel(discord.ui.View):
 
         await interaction.response.send_message("👷 Timer capataz iniciado",ephemeral=True)
 
-    @discord.ui.button(label="🔫 Cargas",style=discord.ButtonStyle.secondary)
-    async def cargas(self,interaction:discord.Interaction,button:discord.ui.Button):
+    @discord.ui.button(label="🔫 Cargas", style=discord.ButtonStyle.secondary)
+    async def cargas(self, interaction:discord.Interaction, button:discord.ui.Button):
 
         inicio = ahora()
         fin = inicio + 72*3600
@@ -190,7 +194,7 @@ class Panel(discord.ui.View):
         (interaction.user.id,interaction.user.name,"Cargas",inicio,fin))
         db.commit()
 
-        await interaction.response.send_message("🔫 Timer de cargas iniciado",ephemeral=True)
+        await interaction.response.send_message("🔫 Timer cargas iniciado",ephemeral=True)
 
 @bot.command()
 async def panel(ctx):
@@ -219,14 +223,14 @@ async def dashboard(ctx):
         return
 
     embed = discord.Embed(
-        title="📊 Timers Activos del Servidor",
+        title="📊 Timers Activos",
         description="Panel automático",
         color=0x2ecc71
     )
 
     dashboard_message = await ctx.send(embed=embed)
 
-@tasks.loop(seconds=30)
+@tasks.loop(seconds=10)
 async def actualizar_dashboard():
 
     global dashboard_message
@@ -269,7 +273,7 @@ async def actualizar_dashboard():
 
 # ---------------- REVISION TIMERS ----------------
 
-@tasks.loop(seconds=30)
+@tasks.loop(seconds=10)
 async def revisar():
 
     cursor.execute("SELECT * FROM timers WHERE fin <= ?",(ahora(),))
