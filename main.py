@@ -1,269 +1,217 @@
 import discord
-from discord.ext import commands
-import asyncio
+from discord.ext import commands, tasks
+import sqlite3
+import time
 import os
-import json
-from datetime import datetime, timedelta
+from datetime import datetime
 
-TOKEN = os.getenv("DISCORD_TOKEN")
+TOKEN = os.environ["DISCORD_TOKEN"]
 
 CANAL_AVISOS = 1481166318026752133
 CANAL_REGISTRO = 1481166533748326421
-
-DATA_FILE = "data.json"
 
 intents = discord.Intents.default()
 intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ---------------- DATA ---------------- #
+db = sqlite3.connect("timers.db")
+cursor = db.cursor()
 
-def cargar_datos():
-    try:
-        with open(DATA_FILE, "r") as f:
-            return json.load(f)
-    except:
-        return []
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS timers(
+user_id INTEGER,
+username TEXT,
+tipo TEXT,
+inicio INTEGER,
+fin INTEGER
+)
+""")
 
-def guardar_datos(data):
-    with open(DATA_FILE, "w") as f:
-        json.dump(data, f)
+db.commit()
 
-timers = cargar_datos()
 
-# ---------------- TIMER SYSTEM ---------------- #
+def ahora():
+    return int(time.time())
 
-async def iniciar_timer(timer):
 
-    ahora = datetime.utcnow().timestamp()
-    espera = timer["fin"] - ahora
+def formatear_hora(ts):
+    return datetime.fromtimestamp(ts).strftime("%H:%M:%S")
 
-    if espera > 0:
-        await asyncio.sleep(espera)
 
-    canal = bot.get_channel(CANAL_AVISOS)
-    user = await bot.fetch_user(timer["usuario"])
+def tiempo_restante(seg):
+    horas = seg // 3600
+    minutos = (seg % 3600) // 60
 
-    embed = discord.Embed(
-        title="⏰ Timer terminado",
-        description=timer["mensaje"],
-        color=discord.Color.green()
-    )
-
-    if timer["everyone"]:
-        await canal.send(f"{user.mention} @everyone", embed=embed)
+    if horas > 0:
+        return f"{horas}h {minutos}m"
     else:
-        await canal.send(f"{user.mention}", embed=embed)
+        return f"{minutos}m"
 
-    timers.remove(timer)
-    guardar_datos(timers)
 
-async def crear_timer(ctx, nombre, horas, mensaje, everyone=True):
+async def iniciar_timer(ctx, tipo, horas):
 
-    ahora = datetime.utcnow()
-    fin = ahora + timedelta(hours=horas)
+    if ctx.channel.id != CANAL_REGISTRO:
+        return
 
-    timer = {
-        "usuario": ctx.author.id,
-        "nombre": nombre,
-        "fin": fin.timestamp(),
-        "mensaje": mensaje,
-        "everyone": everyone
-    }
+    inicio = ahora()
+    fin = inicio + horas * 3600
 
-    timers.append(timer)
-    guardar_datos(timers)
+    cursor.execute(
+        "INSERT INTO timers VALUES (?,?,?,?,?)",
+        (ctx.author.id, ctx.author.name, tipo, inicio, fin)
+    )
+    db.commit()
 
     embed = discord.Embed(
-        title=f"✅ Timer iniciado: {nombre}",
-        color=discord.Color.blue()
+        title="⏱️ Timer iniciado",
+        color=0x00ffaa
     )
 
-    embed.add_field(name="Usuario", value=ctx.author.mention)
-    embed.add_field(name="Inicio", value=ahora.strftime("%H:%M:%S"))
-    embed.add_field(name="Fin", value=fin.strftime("%H:%M:%S"))
+    embed.add_field(name="Usuario", value=ctx.author.mention, inline=False)
+    embed.add_field(name="Acción", value=tipo, inline=True)
+    embed.add_field(name="Duración", value=f"{horas} horas", inline=True)
+    embed.add_field(name="Inicio", value=formatear_hora(inicio), inline=True)
+    embed.add_field(name="Finaliza", value=formatear_hora(fin), inline=True)
 
     await ctx.send(embed=embed)
 
-    bot.loop.create_task(iniciar_timer(timer))
-
-# ---------------- BOTONES ---------------- #
-
-class PanelTimers(discord.ui.View):
-
-    @discord.ui.button(label="📦 Cajas", style=discord.ButtonStyle.primary)
-    async def cajas(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await crear_timer(interaction, "Cajas", 3, "📦 Ya puedes recoger cajas!")
-
-    @discord.ui.button(label="🧔 Capataz", style=discord.ButtonStyle.success)
-    async def capataz(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await crear_timer(interaction, "Capataz", 5, "🧔 El capataz tiene nueva misión!")
-
-    @discord.ui.button(label="💰 Robo", style=discord.ButtonStyle.danger)
-    async def robo(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await crear_timer(interaction, "Robo", 2, "💰 Ya puedes robar otra propiedad!")
-
-# ---------------- READY ---------------- #
-
-@bot.event
-async def on_ready():
-
-    print(f"Bot conectado como {bot.user}")
-
-    for timer in timers:
-        bot.loop.create_task(iniciar_timer(timer))
-
-# ---------------- COMANDOS ---------------- #
-
-@bot.command()
-async def panel(ctx):
-
-    embed = discord.Embed(
-        title="🎮 Panel de timers",
-        description="Usa los botones para iniciar timers",
-        color=discord.Color.gold()
-    )
-
-    await ctx.send(embed=embed, view=PanelTimers())
 
 @bot.command()
 async def cajas(ctx):
+    await iniciar_timer(ctx, "Cajas", 3)
 
-    if ctx.channel.id != CANAL_REGISTRO:
-        return
-
-    await crear_timer(
-        ctx,
-        "Cajas",
-        3,
-        "📦 Ya puedes recoger tu cargamento de cajas!"
-    )
 
 @bot.command()
 async def capataz(ctx):
+    await iniciar_timer(ctx, "Capataz", 5)
 
-    if ctx.channel.id != CANAL_REGISTRO:
-        return
-
-    await crear_timer(
-        ctx,
-        "Capataz",
-        5,
-        "🧔 El capataz tiene una nueva misión!"
-    )
 
 @bot.command()
 async def robo(ctx):
+    await iniciar_timer(ctx, "Robo", 2)
 
-    if ctx.channel.id != CANAL_REGISTRO:
-        return
-
-    await crear_timer(
-        ctx,
-        "Robo",
-        2,
-        "💰 Ya puedes robar otra propiedad!"
-    )
 
 @bot.command()
 async def cargas(ctx):
+    await iniciar_timer(ctx, "Cargas", 72)
 
-    if ctx.channel.id != CANAL_REGISTRO:
-        return
-
-    await crear_timer(
-        ctx,
-        "Cargas",
-        72,
-        "🚛 VE A COMPRAR CARGADORES CON TODOS TUS PJs!",
-        everyone=False
-    )
-
-@bot.command()
-async def prueba(ctx):
-
-    if ctx.channel.id != CANAL_REGISTRO:
-        return
-
-    ahora = datetime.utcnow()
-    fin = ahora + timedelta(minutes=5)
-
-    timer = {
-        "usuario": ctx.author.id,
-        "nombre": "Prueba",
-        "fin": fin.timestamp(),
-        "mensaje": "🧪 Timer de prueba terminado!",
-        "everyone": True
-    }
-
-    timers.append(timer)
-    guardar_datos(timers)
-
-    embed = discord.Embed(
-        title="🧪 Timer de prueba iniciado",
-        color=discord.Color.orange()
-    )
-
-    embed.add_field(name="Fin", value=fin.strftime("%H:%M:%S"))
-
-    await ctx.send(embed=embed)
-
-    bot.loop.create_task(iniciar_timer(timer))
 
 @bot.command()
 async def timers(ctx):
 
-    if not timers:
+    cursor.execute("SELECT * FROM timers")
+    datos = cursor.fetchall()
+
+    if not datos:
         await ctx.send("No hay timers activos.")
         return
 
     embed = discord.Embed(
-        title="⏳ Timers activos",
-        color=discord.Color.purple()
+        title="📊 Timers activos",
+        color=0x3498db
     )
 
-    for t in timers:
+    for t in datos:
 
-        user = await bot.fetch_user(t["usuario"])
-        tiempo = datetime.fromtimestamp(t["fin"])
+        restante = t[4] - ahora()
+
+        if restante < 0:
+            restante = 0
 
         embed.add_field(
-            name=t["nombre"],
-            value=f"{user.name} → {tiempo.strftime('%d/%m %H:%M')}",
+            name=f"{t[2]} • {t[1]}",
+            value=f"⏳ {tiempo_restante(restante)} restantes\n🕒 Fin: {formatear_hora(t[4])}",
             inline=False
         )
 
     await ctx.send(embed=embed)
 
+
 @bot.command()
 async def mistimers(ctx):
 
-    embed = discord.Embed(
-        title="🧾 Tus timers",
-        color=discord.Color.blue()
-    )
+    cursor.execute("SELECT * FROM timers WHERE user_id=?", (ctx.author.id,))
+    datos = cursor.fetchall()
 
-    found = False
-
-    for t in timers:
-
-        if t["usuario"] == ctx.author.id:
-
-            tiempo = datetime.fromtimestamp(t["fin"])
-
-            embed.add_field(
-                name=t["nombre"],
-                value=f"Termina → {tiempo.strftime('%d/%m %H:%M')}",
-                inline=False
-            )
-
-            found = True
-
-    if not found:
+    if not datos:
         await ctx.send("No tienes timers activos.")
         return
 
+    embed = discord.Embed(
+        title="📊 Tus timers activos",
+        color=0x9b59b6
+    )
+
+    for t in datos:
+
+        restante = t[4] - ahora()
+
+        if restante < 0:
+            restante = 0
+
+        embed.add_field(
+            name=f"{t[2]}",
+            value=f"⏳ {tiempo_restante(restante)} restantes\n🕒 Fin: {formatear_hora(t[4])}",
+            inline=False
+        )
+
     await ctx.send(embed=embed)
+
+
+@tasks.loop(seconds=30)
+async def revisar():
+
+    cursor.execute("SELECT * FROM timers WHERE fin <= ?", (ahora(),))
+    lista = cursor.fetchall()
+
+    if not lista:
+        return
+
+    canal = bot.get_channel(CANAL_AVISOS)
+
+    for t in lista:
+
+        user = await bot.fetch_user(t[0])
+        tipo = t[2]
+
+        if tipo == "Cajas":
+            msg = f"{user.mention} @everyone Ya puedes recoger tu cargamento de cajas!!"
+
+        elif tipo == "Capataz":
+            msg = f"{user.mention} @everyone Ya está listo el capataz para entregarte una nueva misión!!"
+
+        elif tipo == "Robo":
+            msg = f"{user.mention} @everyone Ya puedes robar otra propiedad! Ponte la máscara, toma tu uzi y ve a divertirte mi farmero favorito!"
+
+        elif tipo == "Cargas":
+            msg = f"{user.mention} VE A COMPRAR CARGADORES CON TODOS TUS PJs Farmero de corazón!!"
+
+        else:
+            msg = f"{user.mention} Timer terminado!"
+
+        embed = discord.Embed(
+            title="✅ Timer finalizado",
+            description=msg,
+            color=0x00ff00
+        )
+
+        embed.add_field(name="Acción", value=tipo)
+
+        await canal.send(embed=embed)
+
+        cursor.execute(
+            "DELETE FROM timers WHERE user_id=? AND tipo=? AND inicio=? AND fin=?",
+            (t[0], t[2], t[3], t[4])
+        )
+
+        db.commit()
+
+
+@bot.event
+async def on_ready():
+    print("Bot conectado como", bot.user)
+    revisar.start()
+
 
 bot.run(TOKEN)
