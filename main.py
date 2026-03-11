@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS timers(
 user_id INTEGER,
 username TEXT,
 tipo TEXT,
+numero INTEGER,
 inicio INTEGER,
 fin INTEGER,
 mensaje INTEGER
@@ -160,19 +161,17 @@ def sumar_ranking(user_id, username, tipo):
 async def iniciar_timer(ctx, tipo, horas):
 
     cursor.execute(
-        "SELECT * FROM timers WHERE user_id=? AND tipo=?",
+        "SELECT COUNT(*) FROM timers WHERE user_id=? AND tipo=?",
         (ctx.author.id, tipo)
     )
 
-    if cursor.fetchone():
-        await ctx.send(f"⚠️ {ctx.author.mention} ya tienes un **{tipo}** activo.")
-        return
+    numero = cursor.fetchone()[0] + 1
 
     inicio = now()
     fin = inicio + int(horas * 3600)
 
     embed = discord.Embed(
-        title=f"⏱ Timer de {tipo}",
+        title=f"⏱ {tipo} #{numero}",
         color=0x00ffaa
     )
 
@@ -190,8 +189,8 @@ async def iniciar_timer(ctx, tipo, horas):
     msg = await ctx.send(embed=embed)
 
     cursor.execute(
-        "INSERT INTO timers VALUES (?,?,?,?,?,?)",
-        (ctx.author.id, ctx.author.name, tipo, inicio, fin, msg.id)
+        "INSERT INTO timers VALUES (?,?,?,?,?,?,?)",
+        (ctx.author.id, ctx.author.name, tipo, numero, inicio, fin, msg.id)
     )
 
     db.commit()
@@ -219,6 +218,86 @@ async def cargas(ctx):
 @bot.command()
 async def test(ctx):
     await iniciar_timer(ctx, "Test", 0.02)
+
+# ---------------- CANCELAR TIMER ----------------
+
+@bot.command()
+async def cancelar(ctx, tipo, numero:int):
+
+    cursor.execute(
+        "DELETE FROM timers WHERE user_id=? AND tipo=? AND numero=?",
+        (ctx.author.id, tipo.capitalize(), numero)
+    )
+
+    db.commit()
+
+    await ctx.send(f"🛑 {tipo} #{numero} cancelado.")
+
+# ---------------- VER MIS TIMERS ----------------
+
+class CancelarView(discord.ui.View):
+
+    def __init__(self,user_id,tipo,numero):
+        super().__init__(timeout=None)
+        self.user_id=user_id
+        self.tipo=tipo
+        self.numero=numero
+
+    @discord.ui.button(label="❌ Cancelar",style=discord.ButtonStyle.danger)
+    async def cancelar(self,interaction:discord.Interaction,button:discord.ui.Button):
+
+        if interaction.user.id!=self.user_id:
+
+            await interaction.response.send_message(
+                "No puedes cancelar timers de otro usuario.",
+                ephemeral=True
+            )
+            return
+
+        cursor.execute(
+        "DELETE FROM timers WHERE user_id=? AND tipo=? AND numero=?",
+        (self.user_id,self.tipo,self.numero)
+        )
+
+        db.commit()
+
+        await interaction.response.edit_message(
+        content="🛑 Timer cancelado",
+        embed=None,
+        view=None
+        )
+
+@bot.command()
+async def mistimers(ctx):
+
+    cursor.execute(
+    "SELECT * FROM timers WHERE user_id=?",
+    (ctx.author.id,)
+    )
+
+    timers=cursor.fetchall()
+
+    if not timers:
+        await ctx.send("No tienes timers activos.")
+        return
+
+    for t in timers:
+
+        embed=discord.Embed(
+        title=f"{t[2]} #{t[3]}",
+        color=0x3498db
+        )
+
+        embed.add_field(
+        name="Progreso",
+        value=barra(t[4],t[5]),
+        inline=False
+        )
+
+        await ctx.send(
+        embed=embed,
+        view=CancelarView(ctx.author.id,t[2],t[3])
+        )
 
 # ---------------- PANEL ----------------
 
@@ -279,11 +358,11 @@ async def actualizar_barras():
 
     for t in timers:
 
-        inicio = t[3]
-        fin = t[4]
+        inicio = t[4]
+        fin = t[5]
 
         embed = discord.Embed(
-            title=f"⏱ Timer de {t[2]}",
+            title=f"⏱ {t[2]} #{t[3]}",
             color=0x00ffaa
         )
 
@@ -309,7 +388,7 @@ async def actualizar_barras():
         embed.add_field(name="Fin HUB", value=hora_hub(fin))
 
         try:
-            msg = await canal.fetch_message(t[5])
+            msg = await canal.fetch_message(t[6])
             await msg.edit(embed=embed)
         except:
             pass
@@ -341,16 +420,16 @@ async def dashboard():
 
     for t in timers:
 
-        restante = t[4] - now()
+        restante = t[5] - now()
 
         if restante <= 0:
             continue
 
         texto += f"👤 <@{t[0]}>\n"
-        texto += f"🎯 {t[2]}\n"
-        texto += f"{barra(t[3],t[4])}\n"
-        texto += f"Fin ARG: {hora_arg(t[4])}\n"
-        texto += f"Fin HUB: {hora_hub(t[4])}\n\n"
+        texto += f"🎯 {t[2]} #{t[3]}\n"
+        texto += f"{barra(t[4],t[5])}\n"
+        texto += f"Fin ARG: {hora_arg(t[5])}\n"
+        texto += f"Fin HUB: {hora_hub(t[5])}\n\n"
 
     if texto == "":
         texto = "No hay timers activos."
@@ -389,7 +468,7 @@ async def finalizar():
 
         embed = discord.Embed(
             title="✅ Timer terminado",
-            description=f"{user.mention} terminó **{t[2]}**",
+            description=f"{user.mention} terminó **{t[2]} #{t[3]}**",
             color=0x00ff00
         )
 
@@ -397,7 +476,7 @@ async def finalizar():
 
         cursor.execute(
             "DELETE FROM timers WHERE mensaje=?",
-            (t[5],)
+            (t[6],)
         )
 
         db.commit()
