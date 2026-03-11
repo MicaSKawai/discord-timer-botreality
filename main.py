@@ -55,6 +55,15 @@ fin INTEGER
 )
 """)
 
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS ranking(
+user_id INTEGER,
+username TEXT,
+tipo TEXT,
+cantidad INTEGER
+)
+""")
+
 db.commit()
 
 # ---------------- TIEMPO ----------------
@@ -62,7 +71,7 @@ db.commit()
 def ahora():
     return int(time.time())
 
-def hora_argentina(ts):
+def hora_arg(ts):
     utc = datetime.utcfromtimestamp(ts)
     argentina = utc - timedelta(hours=3)
     return argentina.strftime("%H:%M")
@@ -83,42 +92,93 @@ def tiempo_restante(seg):
     else:
         return f"{minutos}m"
 
+# ---------------- BARRA PROGRESO ----------------
+
+def barra_progreso(inicio, fin):
+
+    total = fin - inicio
+    pasado = ahora() - inicio
+
+    if pasado < 0:
+        pasado = 0
+
+    if pasado > total:
+        pasado = total
+
+    progreso = pasado / total
+
+    bloques = 16
+    llenos = int(bloques * progreso)
+    vacios = bloques - llenos
+
+    barra = "█"*llenos + "░"*vacios
+    porcentaje = int(progreso*100)
+
+    return f"{barra} {porcentaje}%"
+
+# ---------------- SUMAR RANKING ----------------
+
+def sumar_ranking(user_id, username, tipo):
+
+    cursor.execute(
+    "SELECT cantidad FROM ranking WHERE user_id=? AND tipo=?",
+    (user_id,tipo)
+    )
+
+    dato = cursor.fetchone()
+
+    if dato:
+
+        cursor.execute(
+        "UPDATE ranking SET cantidad=cantidad+1 WHERE user_id=? AND tipo=?",
+        (user_id,tipo)
+        )
+
+    else:
+
+        cursor.execute(
+        "INSERT INTO ranking VALUES (?,?,?,1)",
+        (user_id,username,tipo)
+        )
+
+    db.commit()
+
 # ---------------- TIMER ----------------
 
-async def iniciar_timer(ctx, tipo, horas):
+async def iniciar_timer(ctx,tipo,horas):
 
     if ctx.channel.id != CANAL_REGISTRO:
         return
 
     inicio = ahora()
-    fin = inicio + int(horas * 3600)
+    fin = inicio + int(horas*3600)
 
     cursor.execute(
-        "INSERT INTO timers VALUES (?,?,?,?,?)",
-        (ctx.author.id, ctx.author.name, tipo, inicio, fin)
+    "INSERT INTO timers VALUES (?,?,?,?,?)",
+    (ctx.author.id,ctx.author.name,tipo,inicio,fin)
     )
 
     db.commit()
 
-    if horas < 1:
-        duracion = f"{int(horas*60)} minutos"
-    else:
-        duracion = f"{horas} horas"
+    sumar_ranking(ctx.author.id,ctx.author.name,tipo)
 
     embed = discord.Embed(
-        title="⏱ Timer iniciado",
-        color=0x00ffaa
+    title="⏱ Timer iniciado",
+    color=0x00ffaa
     )
 
-    embed.add_field(name="Usuario", value=ctx.author.mention, inline=False)
-    embed.add_field(name="Acción", value=tipo, inline=True)
-    embed.add_field(name="Duración", value=duracion, inline=True)
+    embed.add_field(name="Usuario",value=ctx.author.mention,inline=False)
 
-    embed.add_field(name="Inicio ARG", value=hora_argentina(inicio))
-    embed.add_field(name="Inicio HUB", value=hora_hub(inicio))
+    embed.add_field(name="Acción",value=tipo,inline=True)
 
-    embed.add_field(name="Fin ARG", value=hora_argentina(fin))
-    embed.add_field(name="Fin HUB", value=hora_hub(fin))
+    embed.add_field(
+    name="Progreso",
+    value=barra_progreso(inicio,fin),
+    inline=False
+    )
+
+    embed.add_field(name="Fin ARG",value=hora_arg(fin))
+    embed.add_field(name="Fin HUB",value=hora_hub(fin))
 
     await ctx.send(embed=embed)
 
@@ -129,12 +189,12 @@ async def cajas(ctx):
     await iniciar_timer(ctx,"Cajas",3)
 
 @bot.command()
-async def capataz(ctx):
-    await iniciar_timer(ctx,"Capataz",5)
-
-@bot.command()
 async def robo(ctx):
     await iniciar_timer(ctx,"Robo",2)
+
+@bot.command()
+async def capataz(ctx):
+    await iniciar_timer(ctx,"Capataz",5)
 
 @bot.command()
 async def cargas(ctx):
@@ -148,53 +208,37 @@ async def test(ctx):
 
 class Panel(discord.ui.View):
 
-    @discord.ui.button(label="📦 Cajas", style=discord.ButtonStyle.primary)
-    async def cajas(self, interaction:discord.Interaction, button:discord.ui.Button):
+    @discord.ui.button(label="📦 Cajas",style=discord.ButtonStyle.primary)
+    async def cajas(self,interaction:discord.Interaction,button:discord.ui.Button):
 
-        inicio = ahora()
-        fin = inicio + 3*3600
+        ctx = await bot.get_context(interaction.message)
+        ctx.author = interaction.user
+        await iniciar_timer(ctx,"Cajas",3)
+        await interaction.response.defer()
 
-        cursor.execute("INSERT INTO timers VALUES (?,?,?,?,?)",
-        (interaction.user.id,interaction.user.name,"Cajas",inicio,fin))
-        db.commit()
+    @discord.ui.button(label="💰 Robo",style=discord.ButtonStyle.danger)
+    async def robo(self,interaction:discord.Interaction,button:discord.ui.Button):
 
-        await interaction.response.send_message("📦 Timer de cajas iniciado",ephemeral=True)
+        ctx = await bot.get_context(interaction.message)
+        ctx.author = interaction.user
+        await iniciar_timer(ctx,"Robo",2)
+        await interaction.response.defer()
 
-    @discord.ui.button(label="💰 Robo", style=discord.ButtonStyle.danger)
-    async def robo(self, interaction:discord.Interaction, button:discord.ui.Button):
+    @discord.ui.button(label="👷 Capataz",style=discord.ButtonStyle.success)
+    async def capataz(self,interaction:discord.Interaction,button:discord.ui.Button):
 
-        inicio = ahora()
-        fin = inicio + 2*3600
+        ctx = await bot.get_context(interaction.message)
+        ctx.author = interaction.user
+        await iniciar_timer(ctx,"Capataz",5)
+        await interaction.response.defer()
 
-        cursor.execute("INSERT INTO timers VALUES (?,?,?,?,?)",
-        (interaction.user.id,interaction.user.name,"Robo",inicio,fin))
-        db.commit()
+    @discord.ui.button(label="🔫 Cargas",style=discord.ButtonStyle.secondary)
+    async def cargas(self,interaction:discord.Interaction,button:discord.ui.Button):
 
-        await interaction.response.send_message("💰 Timer de robo iniciado",ephemeral=True)
-
-    @discord.ui.button(label="👷 Capataz", style=discord.ButtonStyle.success)
-    async def capataz(self, interaction:discord.Interaction, button:discord.ui.Button):
-
-        inicio = ahora()
-        fin = inicio + 5*3600
-
-        cursor.execute("INSERT INTO timers VALUES (?,?,?,?,?)",
-        (interaction.user.id,interaction.user.name,"Capataz",inicio,fin))
-        db.commit()
-
-        await interaction.response.send_message("👷 Timer capataz iniciado",ephemeral=True)
-
-    @discord.ui.button(label="🔫 Cargas", style=discord.ButtonStyle.secondary)
-    async def cargas(self, interaction:discord.Interaction, button:discord.ui.Button):
-
-        inicio = ahora()
-        fin = inicio + 72*3600
-
-        cursor.execute("INSERT INTO timers VALUES (?,?,?,?,?)",
-        (interaction.user.id,interaction.user.name,"Cargas",inicio,fin))
-        db.commit()
-
-        await interaction.response.send_message("🔫 Timer cargas iniciado",ephemeral=True)
+        ctx = await bot.get_context(interaction.message)
+        ctx.author = interaction.user
+        await iniciar_timer(ctx,"Cargas",72)
+        await interaction.response.defer()
 
 @bot.command()
 async def panel(ctx):
@@ -203,16 +247,16 @@ async def panel(ctx):
         return
 
     embed = discord.Embed(
-        title="🎮 Panel de Timers",
-        description="Usa los botones para iniciar timers.",
-        color=0x5865F2
+    title="🎮 Panel de Timers",
+    description="Usa los botones para iniciar timers.",
+    color=0x5865F2
     )
 
     await ctx.send(embed=embed,view=Panel())
 
 # ---------------- DASHBOARD ----------------
 
-dashboard_message = None
+dashboard_message=None
 
 @bot.command()
 async def dashboard(ctx):
@@ -222,15 +266,15 @@ async def dashboard(ctx):
     if ctx.channel.id != CANAL_DASHBOARD:
         return
 
-    embed = discord.Embed(
-        title="📊 Timers Activos",
-        description="Panel automático",
-        color=0x2ecc71
+    embed=discord.Embed(
+    title="📊 Timers activos",
+    description="Panel automático",
+    color=0x2ecc71
     )
 
-    dashboard_message = await ctx.send(embed=embed)
+    dashboard_message=await ctx.send(embed=embed)
 
-@tasks.loop(seconds=10)
+@tasks.loop(seconds=5)
 async def actualizar_dashboard():
 
     global dashboard_message
@@ -239,31 +283,33 @@ async def actualizar_dashboard():
         return
 
     cursor.execute("SELECT * FROM timers")
-    datos = cursor.fetchall()
+    datos=cursor.fetchall()
 
-    embed = discord.Embed(
-        title="📊 Timers Activos del Servidor",
-        color=0x2ecc71
+    embed=discord.Embed(
+    title="📊 Timers activos del servidor",
+    color=0x2ecc71
     )
 
     if not datos:
         embed.add_field(
-            name="Sin timers",
-            value="Nadie tiene timers activos",
-            inline=False
+        name="Sin timers",
+        value="Nadie tiene timers activos",
+        inline=False
         )
 
     for t in datos:
 
-        restante = t[4] - ahora()
+        restante=t[4]-ahora()
 
-        if restante <= 0:
+        if restante<=0:
             continue
 
+        barra=barra_progreso(t[3],t[4])
+
         embed.add_field(
-            name=f"{t[2]} • {t[1]}",
-            value=f"⏳ {tiempo_restante(restante)} restantes",
-            inline=False
+        name=f"{t[2]} • {t[1]}",
+        value=f"{barra}\n⏳ {tiempo_restante(restante)}",
+        inline=False
         )
 
     try:
@@ -271,38 +317,69 @@ async def actualizar_dashboard():
     except:
         pass
 
-# ---------------- REVISION TIMERS ----------------
+# ---------------- FINALIZAR TIMERS ----------------
 
-@tasks.loop(seconds=10)
+@tasks.loop(seconds=5)
 async def revisar():
 
     cursor.execute("SELECT * FROM timers WHERE fin <= ?",(ahora(),))
-    lista = cursor.fetchall()
+    lista=cursor.fetchall()
 
     if not lista:
         return
 
-    canal = bot.get_channel(CANAL_AVISOS)
+    canal=bot.get_channel(CANAL_AVISOS)
 
     for t in lista:
 
-        user = await bot.fetch_user(t[0])
-        tipo = t[2]
+        user=await bot.fetch_user(t[0])
+        tipo=t[2]
 
-        embed = discord.Embed(
-            title="✅ Timer finalizado",
-            description=f"{user.mention} Tu timer **{tipo}** terminó.",
-            color=0x00ff00
+        embed=discord.Embed(
+        title="✅ Timer finalizado",
+        description=f"{user.mention} tu **{tipo}** ya terminó",
+        color=0x00ff00
         )
 
         await canal.send(embed=embed)
 
         cursor.execute(
-            "DELETE FROM timers WHERE user_id=? AND tipo=? AND inicio=? AND fin=?",
-            (t[0],t[2],t[3],t[4])
+        "DELETE FROM timers WHERE user_id=? AND tipo=? AND inicio=? AND fin=?",
+        (t[0],t[2],t[3],t[4])
         )
 
         db.commit()
+
+# ---------------- STATS USUARIO ----------------
+
+@bot.command()
+async def stats(ctx):
+
+    cursor.execute(
+    "SELECT tipo,cantidad FROM ranking WHERE user_id=?",
+    (ctx.author.id,)
+    )
+
+    datos=cursor.fetchall()
+
+    if not datos:
+        await ctx.send("No tienes actividad registrada.")
+        return
+
+    embed=discord.Embed(
+    title=f"📊 Estadísticas de {ctx.author.name}",
+    color=0x3498db
+    )
+
+    for tipo,cant in datos:
+
+        embed.add_field(
+        name=tipo,
+        value=f"{cant} completados",
+        inline=False
+        )
+
+    await ctx.send(embed=embed)
 
 # ---------------- READY ----------------
 
