@@ -4,10 +4,7 @@ import sqlite3
 import datetime
 import os
 
-TOKEN = os.getenv("TOKEN")
-
-print("TOKEN:", TOKEN)
-print("TOKEN TYPE:", type(TOKEN))
+TOKEN = os.environ["TOKEN"]
 
 CANAL_AVISOS = 1481166318026752133
 CANAL_REGISTRO = 1481166533748326421
