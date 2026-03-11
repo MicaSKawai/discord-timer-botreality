@@ -4,16 +4,43 @@ import sqlite3
 import time
 import os
 from datetime import datetime
+import threading
+from flask import Flask
+
+# ---------------- KEEP ALIVE (ANTI SLEEP) ----------------
+
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot activo"
+
+def run():
+    app.run(host='0.0.0.0', port=8080)
+
+def keep_alive():
+    t = threading.Thread(target=run)
+    t.start()
+
+keep_alive()
+
+# ---------------- TOKEN ----------------
 
 TOKEN = os.environ["DISCORD_TOKEN"]
 
+# ---------------- CANALES ----------------
+
 CANAL_AVISOS = 1481166318026752133
 CANAL_REGISTRO = 1481166533748326421
+
+# ---------------- DISCORD SETUP ----------------
 
 intents = discord.Intents.default()
 intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
+
+# ---------------- DATABASE ----------------
 
 db = sqlite3.connect("timers.db")
 cursor = db.cursor()
@@ -30,16 +57,16 @@ fin INTEGER
 
 db.commit()
 
+# ---------------- FUNCIONES ----------------
 
 def ahora():
     return int(time.time())
 
-
 def formatear_hora(ts):
     return datetime.fromtimestamp(ts).strftime("%H:%M:%S")
 
-
 def tiempo_restante(seg):
+
     horas = seg // 3600
     minutos = (seg % 3600) // 60
 
@@ -48,6 +75,7 @@ def tiempo_restante(seg):
     else:
         return f"{minutos}m"
 
+# ---------------- TIMER CREATOR ----------------
 
 async def iniciar_timer(ctx, tipo, horas):
 
@@ -61,6 +89,7 @@ async def iniciar_timer(ctx, tipo, horas):
         "INSERT INTO timers VALUES (?,?,?,?,?)",
         (ctx.author.id, ctx.author.name, tipo, inicio, fin)
     )
+
     db.commit()
 
     embed = discord.Embed(
@@ -76,26 +105,25 @@ async def iniciar_timer(ctx, tipo, horas):
 
     await ctx.send(embed=embed)
 
+# ---------------- COMANDOS ----------------
 
 @bot.command()
 async def cajas(ctx):
     await iniciar_timer(ctx, "Cajas", 3)
 
-
 @bot.command()
 async def capataz(ctx):
     await iniciar_timer(ctx, "Capataz", 5)
-
 
 @bot.command()
 async def robo(ctx):
     await iniciar_timer(ctx, "Robo", 2)
 
-
 @bot.command()
 async def cargas(ctx):
     await iniciar_timer(ctx, "Cargas", 72)
 
+# ---------------- VER TIMERS ----------------
 
 @bot.command()
 async def timers(ctx):
@@ -127,6 +155,7 @@ async def timers(ctx):
 
     await ctx.send(embed=embed)
 
+# ---------------- VER MIS TIMERS ----------------
 
 @bot.command()
 async def mistimers(ctx):
@@ -158,6 +187,7 @@ async def mistimers(ctx):
 
     await ctx.send(embed=embed)
 
+# ---------------- REVISAR TIMERS ----------------
 
 @tasks.loop(seconds=30)
 async def revisar():
@@ -207,11 +237,11 @@ async def revisar():
 
         db.commit()
 
+# ---------------- BOT READY ----------------
 
 @bot.event
 async def on_ready():
     print("Bot conectado como", bot.user)
     revisar.start()
-
 
 bot.run(TOKEN)
