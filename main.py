@@ -279,7 +279,7 @@ embed = discord.Embed(
 await ctx.send(embed=embed,view=Panel())
 ```
 
-# ---------------- ACTUALIZAR BARRAS REGISTRO ----------------
+# ---------------- ACTUALIZAR BARRAS ----------------
 
 @tasks.loop(seconds=10)
 async def actualizar_barras():
