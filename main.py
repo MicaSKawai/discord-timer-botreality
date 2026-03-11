@@ -13,14 +13,14 @@ app = Flask('')
 
 @app.route('/')
 def home():
-return "Bot activo"
+    return "Bot activo"
 
 def run():
-app.run(host='0.0.0.0', port=8080)
+    app.run(host='0.0.0.0', port=8080)
 
 def keep_alive():
-t = threading.Thread(target=run)
-t.start()
+    t = threading.Thread(target=run)
+    t.start()
 
 keep_alive()
 
