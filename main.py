@@ -214,7 +214,7 @@ async def robo(ctx):
 
 @bot.command()
 async def capataz(ctx):
-    await iniciar_timer(ctx, "Capataz", 5)
+    await iniciar_timer(ctx, "Capataz", 6)
 
 @bot.command()
 async def cargas(ctx):
