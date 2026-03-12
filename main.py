@@ -433,8 +433,8 @@ async def dashboard():
 
     canal = bot.get_channel(CANAL_DASHBOARD)
 
-if canal is None:
-    return
+    if canal is None:
+        return
 
     cursor.execute("SELECT msg_id FROM dashboard")
     data = cursor.fetchone()
