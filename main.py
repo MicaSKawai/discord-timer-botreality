@@ -173,7 +173,7 @@ async def iniciar_timer(ctx, tipo, horas):
         numero = data + 1
 
     inicio = now()
-    fin = inicio + int(horas * 3600)
+    fin = inicio + round(horas * 3600)
 
     embed = discord.Embed(
         title=f"⏱ {tipo} #{numero}",
@@ -361,7 +361,10 @@ async def actualizar_barras():
 
     canal = bot.get_channel(CANAL_REGISTRO)
 
-    for t in timers:
+if canal is None:
+    return
+
+for t in timers:
 
         inicio = t[4]
         fin = t[5]
@@ -408,6 +411,9 @@ async def dashboard():
     global dashboard_msg
 
     canal = bot.get_channel(CANAL_DASHBOARD)
+
+if canal is None:
+    return
 
     cursor.execute("SELECT msg_id FROM dashboard")
     data = cursor.fetchone()
@@ -457,7 +463,10 @@ async def dashboard():
 
     else:
 
+    try:
         await dashboard_msg.edit(embed=embed)
+    except:
+        dashboard_msg = None
 
 # ---------------- FINALIZAR ----------------
 
@@ -468,6 +477,9 @@ async def finalizar():
     lista = cursor.fetchall()
 
     canal = bot.get_channel(CANAL_AVISOS)
+
+if canal is None:
+    return
 
     for t in lista:
 
