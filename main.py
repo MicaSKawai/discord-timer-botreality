@@ -114,7 +114,10 @@ def barra(inicio, fin):
     if progreso > total:
         progreso = total
 
-    porcentaje = progreso / total
+    if total <= 0:
+        porcentaje = 1
+    else:
+        porcentaje = progreso / total
 
     bloques = 14
     llenos = int(bloques * porcentaje)
@@ -498,8 +501,8 @@ async def finalizar():
 
     canal = bot.get_channel(CANAL_AVISOS)
 
-if canal is None:
-    return
+    if canal is None:
+        return
 
     for t in lista:
 
