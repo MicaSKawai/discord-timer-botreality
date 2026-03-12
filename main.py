@@ -329,7 +329,7 @@ class Panel(discord.ui.View):
 
         ctx = await bot.get_context(interaction.message)
         ctx.author = interaction.user
-        await iniciar_timer(ctx, "Capataz", 5)
+        await iniciar_timer(ctx, "Capataz", 6)
         await interaction.response.defer()
 
     @discord.ui.button(label="🔫 Cargas", style=discord.ButtonStyle.secondary)
@@ -421,6 +421,8 @@ async def dashboard():
     cursor.execute("SELECT * FROM timers")
     timers = cursor.fetchall()
 
+    timers = sorted(timers, key=lambda x: x[5])
+    
     texto = ""
 
     for t in timers:
