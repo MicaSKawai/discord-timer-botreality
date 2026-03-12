@@ -483,11 +483,10 @@ if canal is None:
         db.commit()
 
     else:
-
-    try:
-        await dashboard_msg.edit(embed=embed)
-    except:
-        dashboard_msg = None
+        try:
+            await dashboard_msg.edit(embed=embed)
+        except:
+            dashboard_msg = None
 
 # ---------------- FINALIZAR ----------------
 
