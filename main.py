@@ -382,8 +382,8 @@ async def actualizar_barras():
 
     canal = bot.get_channel(CANAL_REGISTRO)
 
-if canal is None:
-    return
+    if canal is None:
+        return
 
 for t in timers:
 
