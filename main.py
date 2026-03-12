@@ -43,7 +43,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ---------------- DATABASE ----------------
 
-db = sqlite3.connect("timers2.db", check_same_thread=False)
+db = sqlite3.connect("timers.db", check_same_thread=False)
 cursor = db.cursor()
 
 cursor.execute("""
