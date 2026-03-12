@@ -385,7 +385,7 @@ async def actualizar_barras():
     if canal is None:
         return
 
-for t in timers:
+    for t in timers:
 
         inicio = t[4]
         fin = t[5]
