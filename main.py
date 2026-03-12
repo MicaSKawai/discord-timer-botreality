@@ -161,11 +161,16 @@ def sumar_ranking(user_id, username, tipo):
 async def iniciar_timer(ctx, tipo, horas):
 
     cursor.execute(
-        "SELECT COUNT(*) FROM timers WHERE user_id=? AND tipo=?",
+        "SELECT MAX(numero) FROM timers WHERE user_id=? AND tipo=?",
         (ctx.author.id, tipo)
     )
 
-    numero = cursor.fetchone()[0] + 1
+    data = cursor.fetchone()[0]
+
+    if data is None:
+        numero = 1
+    else:
+        numero = data + 1
 
     inicio = now()
     fin = inicio + int(horas * 3600)
