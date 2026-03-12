@@ -224,6 +224,27 @@ async def cargas(ctx):
 async def test(ctx):
     await iniciar_timer(ctx, "Test", 0.02)
 
+
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def resettimers(ctx):
+    import os
+
+    global db
+
+    try:
+        db.close()
+    except:
+        pass
+
+    if os.path.exists("timers.db"):
+        os.remove("timers.db")
+
+    await ctx.send("🧹 Base de datos de timers reiniciada. Reiniciando bot...")
+
+    os._exit(0)
+
+
 # ---------------- CANCELAR TIMER ----------------
 
 @bot.command()
